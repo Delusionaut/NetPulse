@@ -1,0 +1,34 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Runtime data
+cache/
+*.db
+*.sqlite3
+
+# PyInstaller output
+build/
+dist/
+
+# Node / Vite / Electron
+node_modules/
+ui/node_modules/
+ui/dist/
+ui/engine-stage/
+
+# electron-builder output
+installer/*
+!installer/.gitkeep
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# Env
+.env
+.env.*

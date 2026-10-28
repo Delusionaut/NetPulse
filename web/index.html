@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>NetPulse — Local Network Analyzer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Sora"', "system-ui", "sans-serif"],
+            mono: ['"IBM Plex Mono"', "ui-monospace", "monospace"],
+          },
+          colors: {
+            ink: {
+              950: "#070b14",
+              900: "#0b1220",
+              800: "#111827",
+            },
+            neon: {
+              blue: "#38bdf8",
+              violet: "#a78bfa",
+              mint: "#34d399",
+            },
+          },
+          boxShadow: {
+            glow: "0 0 0 1px rgb(56 189 248 / 0.18), 0 10px 40px -12px rgb(56 189 248 / 0.45)",
+            card: "0 18px 50px -24px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(148 163 184 / 0.08)",
+          },
+        },
+      },
+    };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script type="text/javascript" src="/eel.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --accent: #38bdf8;
+      scrollbar-color: #334155 #0b1220;
+      scrollbar-width: thin;
+    }
+    html, body {
+      background: #070b14;
+      min-height: 100dvh;
+    }
+    body {
+      background-image:
+        radial-gradient(1200px 600px at 10% -10%, rgb(56 189 248 / 0.14), transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, rgb(167 139 250 / 0.16), transparent 50%),
+        radial-gradient(700px 400px at 50% 110%, rgb(52 211 153 / 0.08), transparent 50%);
+    }
+    .glass {
+      background: linear-gradient(180deg, rgb(15 23 42 / 0.82), rgb(15 23 42 / 0.62));
+      backdrop-filter: blur(18px);
+    }
+    .pulse-dot {
+      box-shadow: 0 0 0 0 rgb(52 211 153 / 0.7);
+      animation: pulse-ring 2s ease-out infinite;
+    }
+    @keyframes pulse-ring {
+      70% { box-shadow: 0 0 0 10px rgb(52 211 153 / 0); }
+      100% { box-shadow: 0 0 0 0 rgb(52 211 153 / 0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .pulse-dot { animation: none; }
+    }
+    .scan-bar {
+      background: linear-gradient(90deg, #38bdf8, #a78bfa, #34d399, #38bdf8);
+      background-size: 200% 100%;
+      animation: sheen 1.4s linear infinite;
+    }
+    @keyframes sheen {
+      to { background-position: 200% 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .scan-bar { animation: none; }
+    }
+  </style>
+</head>
+<body class="text-slate-200 antialiased">
+  <div class="mx-auto max-w-[1400px] px-4 py-6 lg:px-8">
+    <header class="mb-6 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="relative grid h-11 w-11 place-items-center rounded-2xl bg-sky-500/10 shadow-glow">
+          <span class="absolute inset-0 rounded-2xl ring-1 ring-sky-400/40"></span>
+          <svg viewBox="0 0 24 24" class="h-6 w-6 text-sky-300" fill="none" stroke="currentColor" stroke-width="1.7">
+            <path stroke-linecap="round" d="M4 12h2m12 0h2M8.5 8.5l1.2 1.2m4.6 4.6 1.2 1.2m0-7-1.2 1.2M9.7 14.3 8.5 15.5" />
+            <circle cx="12" cy="12" r="3.2" />
+          </svg>
+        </div>
+        <div>
+          <p class="text-[0.7rem] uppercase tracking-[0.28em] text-sky-300/80">Local analyzer</p>
+          <h1 class="text-balance text-2xl font-semibold tracking-tight text-white">NetPulse</h1>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <label class="glass flex items-center gap-2 rounded-full px-4 py-2 text-sm text-slate-300 shadow-card">
+          <input id="autoScan" type="checkbox" class="accent-sky-400" />
+          Auto-rescan every 60s
+        </label>
+        <label class="glass flex items-center gap-2 rounded-full px-3 py-2 text-sm text-slate-300 shadow-card">
+          <span class="text-xs uppercase tracking-wider text-slate-500">Ports</span>
+          <select id="portProfile" class="bg-transparent text-slate-200 focus:outline-none">
+            <option value="common">Common (~55)</option>
+            <option value="extended">Extended (~100)</option>
+          </select>
+        </label>
+        <button id="portScanBtn" type="button"
+          class="inline-flex items-center gap-2 rounded-full border border-violet-400/40 bg-violet-500/15 px-5 py-2.5 text-sm font-semibold text-violet-100 shadow-[0_0_24px_-8px_rgb(167,139,250)] transition hover:bg-violet-500/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300 disabled:cursor-wait disabled:opacity-60">
+          Scan ports
+        </button>
+        <button id="scanBtn" type="button"
+          class="inline-flex items-center gap-2 rounded-full bg-sky-500 px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-glow transition hover:bg-sky-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300 disabled:cursor-wait disabled:opacity-60">
+          <svg id="scanIcon" viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" d="M4 4v6h6M20 20v-6h-6M5 19a8 8 0 0 0 14-5M19 5a8 8 0 0 0-14 5" />
+          </svg>
+          <span id="scanLabel">Scan network</span>
+        </button>
+      </div>
+    </header>
+
+    <nav class="mb-6 flex flex-wrap gap-2" aria-label="Views">
+      <button type="button" data-tab="overview" class="tab-btn rounded-full bg-sky-500 px-4 py-1.5 text-sm font-medium text-slate-950">Overview</button>
+      <button type="button" data-tab="alerts" class="tab-btn rounded-full bg-slate-800 px-4 py-1.5 text-sm text-slate-300">Alerts</button>
+      <button type="button" data-tab="connect" class="tab-btn rounded-full bg-slate-800 px-4 py-1.5 text-sm text-slate-300">Connectivity</button>
+      <button type="button" data-tab="wifi" class="tab-btn rounded-full bg-slate-800 px-4 py-1.5 text-sm text-slate-300">Wi-Fi</button>
+      <button type="button" data-tab="local" class="tab-btn rounded-full bg-slate-800 px-4 py-1.5 text-sm text-slate-300">This PC</button>
+      <button type="button" data-tab="discover" class="tab-btn rounded-full bg-slate-800 px-4 py-1.5 text-sm text-slate-300">Discovery</button>
+      <button type="button" data-tab="settings" class="tab-btn rounded-full bg-slate-800 px-4 py-1.5 text-sm text-slate-300">Settings</button>
+    </nav>
+
+    <section class="overview-only mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <article class="glass rounded-2xl p-4 shadow-card">
+        <p class="text-xs uppercase tracking-widest text-slate-400">Local IP</p>
+        <p id="statIp" class="mt-2 font-mono text-xl text-white">—</p>
+        <p id="statHost" class="mt-1 text-sm text-slate-400">—</p>
+      </article>
+      <article class="glass rounded-2xl p-4 shadow-card">
+        <p class="text-xs uppercase tracking-widest text-slate-400">Gateway</p>
+        <p id="statGw" class="mt-2 font-mono text-xl text-white">—</p>
+        <p id="statCidr" class="mt-1 text-sm text-slate-400">—</p>
+      </article>
+      <article class="glass rounded-2xl p-4 shadow-card">
+        <p class="text-xs uppercase tracking-widest text-slate-400">Download</p>
+        <p id="statDown" class="mt-2 font-mono text-xl text-emerald-300">0 B/s</p>
+        <p class="mt-1 text-sm text-slate-400">Live interface usage</p>
+      </article>
+      <article class="glass rounded-2xl p-4 shadow-card">
+        <p class="text-xs uppercase tracking-widest text-slate-400">Upload</p>
+        <p id="statUp" class="mt-2 font-mono text-xl text-violet-300">0 B/s</p>
+        <p id="statIface" class="mt-1 text-sm text-slate-400">—</p>
+      </article>
+    </section>
+
+    <section class="overview-only mb-6 grid gap-4 lg:grid-cols-3">
+      <article class="glass rounded-2xl p-4 shadow-card lg:col-span-2">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-sm font-medium text-slate-200">Throughput</h2>
+          <p class="text-xs text-slate-500">Last 60 samples</p>
+        </div>
+        <canvas id="spark" class="h-36 w-full" height="144" aria-label="Network throughput chart"></canvas>
+      </article>
+      <article class="glass rounded-2xl p-4 shadow-card">
+        <h2 class="text-sm font-medium text-slate-200">Scan status</h2>
+        <div class="mt-4 flex items-center gap-3">
+          <span id="liveDot" class="pulse-dot inline-block h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
+          <p id="scanStatus" class="text-sm text-slate-300">Idle — ready to scan</p>
+        </div>
+        <div class="mt-4 h-2 overflow-hidden rounded-full bg-slate-800">
+          <div id="progressBar" class="h-full w-0 rounded-full bg-sky-400 transition-[width] duration-300"></div>
+        </div>
+        <p id="progressText" class="mt-2 font-mono text-xs text-slate-500">0 / 0 hosts</p>
+        <p class="mt-4 text-xs uppercase tracking-widest text-slate-500">Port scan</p>
+        <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
+          <div id="portProgressBar" class="h-full w-0 rounded-full bg-violet-400 transition-[width] duration-300"></div>
+        </div>
+        <p id="portProgressText" class="mt-2 font-mono text-xs text-slate-500">Idle</p>
+        <dl class="mt-4 grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <dt class="text-slate-500">Devices</dt>
+            <dd id="deviceCount" class="font-mono text-lg text-white">0</dd>
+          </div>
+          <div>
+            <dt class="text-slate-500">Last scan</dt>
+            <dd id="lastScan" class="font-mono text-lg text-white">—</dd>
+          </div>
+        </dl>
+        <p id="scanMethod" class="mt-2 text-xs text-slate-500"></p>
+        <div class="mt-4 rounded-xl border border-white/5 bg-slate-950/40 p-3">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <p class="text-xs uppercase tracking-widest text-slate-500">Public OUI registry</p>
+              <p id="ouiStatus" class="mt-1 text-sm text-slate-300">Loading IEEE / Wireshark feeds…</p>
+              <p id="ouiMeta" class="mt-1 text-xs text-slate-500"></p>
+            </div>
+            <button id="ouiBtn" type="button"
+              class="shrink-0 rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-200 hover:bg-sky-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300">
+              Refresh OUI
+            </button>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="overview-only glass overflow-hidden rounded-2xl shadow-card">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 px-4 py-3">
+        <div>
+          <h2 class="text-sm font-medium text-white">Connected devices</h2>
+          <p class="text-xs text-slate-500">Vendor and likely device class from IEEE MA-L/MA-M/MA-S and Wireshark manuf</p>
+        </div>
+        <input id="filter" type="search" placeholder="Filter by IP, MAC, name…"
+          class="w-full max-w-xs rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:border-sky-400/60 focus:outline-none" />
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-left text-sm">
+          <thead class="bg-slate-950/40 text-xs uppercase tracking-wider text-slate-400">
+            <tr>
+              <th class="px-4 py-3 font-medium">Status</th>
+              <th class="px-4 py-3 font-medium">IP address</th>
+              <th class="px-4 py-3 font-medium">MAC</th>
+              <th class="px-4 py-3 font-medium">Name</th>
+              <th class="px-4 py-3 font-medium">Vendor</th>
+              <th class="px-4 py-3 font-medium">Likely nature</th>
+              <th class="px-4 py-3 font-medium">Role</th>
+              <th class="px-4 py-3 font-medium">Open ports</th>
+              <th class="px-4 py-3 font-medium"></th>
+            </tr>
+          </thead>
+          <tbody id="deviceBody" class="divide-y divide-white/5">
+            <tr>
+              <td colspan="9" class="px-4 py-16 text-center text-slate-500">
+                Scan the network to discover devices on this LAN.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <p class="mt-6 text-center text-xs text-slate-600 overview-only">
+      Host discovery and TCP port scans run on background threads. Ports are probed only on hosts already found on this LAN.
+    </p>
+
+    <section id="panel-alerts" class="tab-panel hidden space-y-4">
+      <div class="glass rounded-2xl p-4 shadow-card">
+        <h2 class="text-sm font-medium text-white">Alerts</h2>
+        <p class="text-xs text-slate-500">New device, left network, IP change, new ports, ARP, DHCP, outages</p>
+        <ul id="alertList" class="mt-4 space-y-2 text-sm"></ul>
+      </div>
+      <div class="glass rounded-2xl p-4 shadow-card">
+        <h2 class="text-sm font-medium text-white">Internet outage log</h2>
+        <ul id="outageList" class="mt-3 space-y-2 font-mono text-xs text-slate-300"></ul>
+      </div>
+    </section>
+
+    <section id="panel-connect" class="tab-panel hidden space-y-4">
+      <div class="flex flex-wrap gap-2">
+        <button type="button" id="btnNat" class="rounded-full bg-sky-500/20 px-4 py-2 text-sm text-sky-100">Public IP / NAT</button>
+        <button type="button" id="btnDns" class="rounded-full bg-sky-500/20 px-4 py-2 text-sm text-sky-100">DNS check</button>
+        <button type="button" id="btnTrace" class="rounded-full bg-sky-500/20 px-4 py-2 text-sm text-sky-100">Traceroute 1.1.1.1</button>
+        <button type="button" id="btnSpeed" class="rounded-full bg-violet-500/20 px-4 py-2 text-sm text-violet-100">Speed + bufferbloat</button>
+      </div>
+      <div class="grid gap-4 lg:grid-cols-2">
+        <article class="glass rounded-2xl p-4 shadow-card">
+          <h2 class="text-sm text-white">Gateway / internet ping</h2>
+          <pre id="pingBox" class="mt-2 whitespace-pre-wrap font-mono text-xs text-slate-300">Waiting for samples…</pre>
+        </article>
+        <article class="glass rounded-2xl p-4 shadow-card">
+          <h2 class="text-sm text-white">NAT / public IP / IPv6</h2>
+          <pre id="natBox" class="mt-2 whitespace-pre-wrap font-mono text-xs text-slate-300">Run Public IP / NAT</pre>
+        </article>
+        <article class="glass rounded-2xl p-4 shadow-card">
+          <h2 class="text-sm text-white">DNS resolvers</h2>
+          <pre id="dnsBox" class="mt-2 whitespace-pre-wrap font-mono text-xs text-slate-300">Run DNS check</pre>
+        </article>
+        <article class="glass rounded-2xl p-4 shadow-card">
+          <h2 class="text-sm text-white">Traceroute</h2>
+          <pre id="traceBox" class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap font-mono text-xs text-slate-300"></pre>
+        </article>
+        <article class="glass rounded-2xl p-4 shadow-card lg:col-span-2">
+          <h2 class="text-sm text-white">Speed test + bufferbloat</h2>
+          <pre id="speedBox" class="mt-2 font-mono text-xs text-slate-300"></pre>
+          <ul id="speedHist" class="mt-3 space-y-1 font-mono text-xs text-slate-500"></ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="panel-wifi" class="tab-panel hidden space-y-4">
+      <button type="button" id="btnWifi" class="rounded-full bg-sky-500 px-4 py-2 text-sm font-medium text-slate-950">Scan Wi-Fi neighbors</button>
+      <p id="wifiNote" class="text-xs text-slate-500"></p>
+      <div id="wifiOcc" class="grid grid-cols-8 gap-2"></div>
+      <div class="glass overflow-hidden rounded-2xl shadow-card">
+        <table class="min-w-full text-left text-sm">
+          <thead class="text-xs uppercase text-slate-400"><tr><th class="px-3 py-2">SSID</th><th class="px-3 py-2">BSSID</th><th class="px-3 py-2">Ch</th><th class="px-3 py-2">RSSI</th><th class="px-3 py-2">Security</th></tr></thead>
+          <tbody id="wifiBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="panel-local" class="tab-panel hidden space-y-4">
+      <button type="button" id="btnLocal" class="rounded-full bg-sky-500/20 px-4 py-2 text-sm">Refresh this PC</button>
+      <div class="grid gap-4 lg:grid-cols-2">
+        <article class="glass rounded-2xl p-4 shadow-card"><h2 class="text-sm text-white">NIC counters</h2><pre id="nicBox" class="mt-2 max-h-64 overflow-auto font-mono text-xs"></pre></article>
+        <article class="glass rounded-2xl p-4 shadow-card"><h2 class="text-sm text-white">Listening ports</h2><pre id="listenBox" class="mt-2 max-h-64 overflow-auto font-mono text-xs"></pre></article>
+        <article class="glass rounded-2xl p-4 shadow-card lg:col-span-2"><h2 class="text-sm text-white">Top local network processes</h2><pre id="procBox" class="mt-2 font-mono text-xs"></pre></article>
+      </div>
+    </section>
+
+    <section id="panel-discover" class="tab-panel hidden space-y-4">
+      <div class="flex flex-wrap gap-2">
+        <button type="button" id="btnDhcp" class="rounded-full bg-amber-500/20 px-4 py-2 text-sm text-amber-100">DHCP / rogue probe</button>
+        <button type="button" id="btnUpnp" class="rounded-full bg-violet-500/20 px-4 py-2 text-sm">UPnP IGD forwards</button>
+        <button type="button" id="btnSnmp" class="rounded-full bg-sky-500/20 px-4 py-2 text-sm">SNMP gateway</button>
+      </div>
+      <article class="glass rounded-2xl p-4 shadow-card"><h2 class="text-sm text-white">L3 topology</h2><p id="topoNote" class="text-xs text-slate-500"></p><div id="topoBox" class="mt-3 flex flex-wrap gap-2"></div></article>
+      <article class="glass rounded-2xl p-4 shadow-card"><h2 class="text-sm text-white">mDNS / SSDP / DHCP fingerprints</h2><pre id="discBox" class="mt-2 max-h-80 overflow-auto font-mono text-xs"></pre></article>
+      <article class="glass rounded-2xl p-4 shadow-card"><h2 class="text-sm text-white">UPnP port mappings</h2><pre id="upnpBox" class="mt-2 font-mono text-xs"></pre></article>
+      <article class="glass rounded-2xl p-4 shadow-card"><h2 class="text-sm text-white">SNMP</h2><pre id="snmpBox" class="mt-2 font-mono text-xs"></pre></article>
+    </section>
+
+    <section id="panel-settings" class="tab-panel hidden space-y-4">
+      <article class="glass rounded-2xl p-4 shadow-card space-y-3">
+        <h2 class="text-sm text-white">Scheduled scans, export, webhooks</h2>
+        <label class="block text-sm">Schedule minutes (0 = off)
+          <input id="schedMin" type="number" min="0" value="0" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2" />
+        </label>
+        <label class="block text-sm">Webhook URL
+          <input id="hookUrl" type="url" placeholder="https://…" class="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2" />
+        </label>
+        <div class="flex gap-2">
+          <button type="button" id="btnSched" class="rounded-full bg-sky-500 px-4 py-2 text-sm text-slate-950">Save schedule</button>
+          <button type="button" id="btnHook" class="rounded-full bg-violet-500/30 px-4 py-2 text-sm">Save webhook</button>
+          <button type="button" id="btnExport" class="rounded-full border border-white/10 px-4 py-2 text-sm">Download JSON export</button>
+        </div>
+        <p class="text-xs text-slate-500">History lives in cache/netpulse.db. Default-credential checks only run on devices you mark Owned, after an extra confirm.</p>
+      </article>
+    </section>
+  </div>
+
+  <script>
+    const downHistory = [];
+    const upHistory = [];
+    const MAX_POINTS = 60;
+    let devices = [];
+    let autoTimer = null;
+    let portScanning = false;
+
+    function fmtRate(bps) {
+      if (bps < 1024) return `${bps.toFixed(0)} B/s`;
+      if (bps < 1024 ** 2) return `${(bps / 1024).toFixed(1)} KB/s`;
+      if (bps < 1024 ** 3) return `${(bps / 1024 ** 2).toFixed(2)} MB/s`;
+      return `${(bps / 1024 ** 3).toFixed(2)} GB/s`;
+    }
+
+    function setScanning(on) {
+      const btn = document.getElementById("scanBtn");
+      btn.disabled = on;
+      document.getElementById("scanLabel").textContent = on ? "Scanning…" : "Scan network";
+      document.getElementById("scanStatus").textContent = on
+        ? "Background thread is probing the subnet"
+        : "Idle — ready to scan";
+      document.getElementById("liveDot").classList.toggle("bg-sky-400", on);
+      document.getElementById("liveDot").classList.toggle("bg-emerald-400", !on);
+      document.getElementById("progressBar").classList.toggle("scan-bar", on);
+    }
+
+    function renderDevices(list) {
+      devices = list || [];
+      const q = document.getElementById("filter").value.trim().toLowerCase();
+      const rows = devices.filter((d) => {
+        if (!q) return true;
+        const ports = (d.open_ports || []).map((p) => `${p.port} ${p.service} ${p.banner || ""}`).join(" ");
+        return [d.ip, d.mac, d.name, d.vendor, d.nature, d.role, d.oui_source, ports].join(" ").toLowerCase().includes(q);
+      });
+      const body = document.getElementById("deviceBody");
+      if (!rows.length) {
+        body.innerHTML = `<tr><td colspan="9" class="px-4 py-16 text-center text-slate-500">${
+          devices.length ? "No devices match this filter." : "Scan the network to discover devices on this LAN."
+        }</td></tr>`;
+        return;
+      }
+      const confGlow = {
+        high: "text-emerald-300 ring-emerald-400/30 bg-emerald-400/10",
+        medium: "text-sky-200 ring-sky-400/30 bg-sky-400/10",
+        low: "text-slate-300 ring-white/10 bg-slate-800",
+      };
+      body.innerHTML = rows.map((d) => {
+        const glow = d.is_gateway
+          ? "bg-violet-400 shadow-[0_0_12px_rgb(167,139,250)]"
+          : d.is_self
+            ? "bg-sky-400 shadow-[0_0_12px_rgb(56,189,248)]"
+            : "bg-emerald-400 shadow-[0_0_10px_rgb(52,211,153)]";
+        const badge = confGlow[d.confidence] || confGlow.low;
+        const note = (d.nature_note || "").replace(/"/g, "&quot;");
+        const source = d.oui_source && d.oui_source !== "none" ? d.oui_source : "no OUI hit";
+        const ports = d.open_ports || [];
+        let portHtml;
+        if (d.port_scan_state === "queued" && portScanning) {
+          portHtml = `<span class="text-xs text-violet-300">Queued…</span>`;
+        } else if (!ports.length) {
+          portHtml = `<span class="text-xs text-slate-500">${d.port_scan_state === "done" ? "None open" : "Not scanned"}</span>`;
+        } else {
+          portHtml = `<div class="flex max-w-xs flex-wrap gap-1.5">${ports.map((p) => {
+            const title = `${p.service}${p.banner ? " — " + p.banner : ""}`.replace(/"/g, "&quot;");
+            return `<span class="rounded-full bg-sky-500/10 px-2 py-0.5 font-mono text-[0.7rem] text-sky-200 ring-1 ring-sky-400/30" title="${title}">${p.port}<span class="ml-1 text-slate-400">${p.service}</span></span>`;
+          }).join("")}</div>`;
+        }
+        return `<tr class="hover:bg-white/[0.03]">
+          <td class="px-4 py-3"><span class="inline-block h-2.5 w-2.5 rounded-full ${glow}" title="Active"></span></td>
+          <td class="px-4 py-3 font-mono text-sky-200">${d.ip}</td>
+          <td class="px-4 py-3 font-mono text-slate-300">${d.mac}</td>
+          <td class="px-4 py-3 text-white">${d.name}</td>
+          <td class="px-4 py-3">
+            <div class="text-slate-200">${d.vendor || "Unknown"}</div>
+            <div class="text-[0.7rem] text-slate-500">${source}</div>
+          </td>
+          <td class="px-4 py-3">
+            <span class="inline-flex max-w-[18rem] rounded-full px-2.5 py-1 text-xs ring-1 ${badge}" title="${note}">${d.nature || "Unknown"}</span>
+          </td>
+          <td class="px-4 py-3"><span class="rounded-full bg-slate-800 px-2.5 py-1 text-xs text-slate-200 ring-1 ring-white/10">${d.role}</span></td>
+          <td class="px-4 py-3">
+            ${portHtml}
+            ${d.risk ? `<div class="mt-1 text-[0.7rem] text-slate-400">Risk ${d.risk.score} ${d.risk.grade}</div>` : ""}
+            ${d.http && d.http.title ? `<div class="mt-1 text-[0.7rem] text-slate-400">HTTP: ${d.http.title}</div>` : ""}
+            ${d.tls && d.tls.cn ? `<div class="mt-1 text-[0.7rem] text-slate-400">TLS CN ${d.tls.cn}${d.tls.self_signed ? " (self-signed)" : ""}</div>` : ""}
+            ${d.mdns ? `<div class="mt-1 text-[0.7rem] text-sky-300">mDNS ${(d.mdns.services||[]).slice(0,3).join(", ")}</div>` : ""}
+            ${d.ssdp && d.ssdp.friendly_name ? `<div class="mt-1 text-[0.7rem] text-violet-300">UPnP ${d.ssdp.friendly_name}</div>` : ""}
+            ${d.netbios ? `<div class="mt-1 text-[0.7rem] text-emerald-300">NetBIOS ${d.netbios}</div>` : ""}
+          </td>
+          <td class="px-4 py-3 text-right">
+            <div class="flex flex-wrap justify-end gap-1">
+              <button type="button" data-scan-ip="${d.ip}" class="host-port-btn rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:border-violet-400/50 hover:text-violet-200 disabled:opacity-40">Ports</button>
+              <button type="button" data-wol="${d.mac}" class="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:text-sky-200">WOL</button>
+              <button type="button" data-own="${d.store_mac || d.mac}" class="rounded-full border border-white/10 px-3 py-1 text-xs ${d.owned ? 'text-emerald-300' : 'text-slate-300'}">Owned</button>
+              <button type="button" data-trust="${d.store_mac || d.mac}" class="rounded-full border border-white/10 px-3 py-1 text-xs ${d.trusted ? 'text-sky-300' : 'text-slate-400'}">${d.trusted ? 'Trusted' : 'Unknown'}</button>
+              <button type="button" data-creds="${d.ip}" class="rounded-full border border-white/10 px-3 py-1 text-xs text-amber-200">Creds</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join("");
+      body.querySelectorAll(".host-port-btn").forEach((btn) => {
+        btn.disabled = portScanning;
+        btn.addEventListener("click", () => {
+          const ip = btn.getAttribute("data-scan-ip");
+          const profile = document.getElementById("portProfile").value;
+          eel.start_port_scan(ip, profile)();
+        });
+      });
+      body.querySelectorAll("[data-wol]").forEach((btn) => {
+        btn.addEventListener("click", () => eel.wake_host(btn.getAttribute("data-wol"))());
+      });
+      body.querySelectorAll("[data-trust]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const mac = btn.getAttribute("data-trust");
+          const d = devices.find((x) => (x.store_mac || x.mac) === mac);
+          eel.set_device_meta(mac, !(d && d.trusted), !!(d && d.owned), d && d.tags || [], (d && d.notes) || "")();
+        });
+      });
+      body.querySelectorAll("[data-own]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const mac = btn.getAttribute("data-own");
+          const d = devices.find((x) => (x.store_mac || x.mac) === mac);
+          eel.set_device_meta(mac, !!(d && d.trusted), !(d && d.owned), d && d.tags || [], (d && d.notes) || "")();
+        });
+      });
+      body.querySelectorAll("[data-creds]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const ip = btn.getAttribute("data-creds");
+          if (!confirm("Run a tiny default-password check on " + ip + "? Only use this on hardware you own. The device must be marked Owned.")) return;
+          const r = await eel.run_default_creds(ip, true)();
+          alert(JSON.stringify(r, null, 2));
+        });
+      });
+    }
+
+    function setPortScanning(on) {
+      portScanning = !!on;
+      const btn = document.getElementById("portScanBtn");
+      btn.disabled = portScanning;
+      btn.textContent = portScanning ? "Scanning ports…" : "Scan ports";
+      document.getElementById("portProgressBar").classList.toggle("scan-bar", portScanning);
+      document.querySelectorAll(".host-port-btn").forEach((el) => { el.disabled = portScanning; });
+    }
+
+    function drawSpark() {
+      const canvas = document.getElementById("spark");
+      const ctx = canvas.getContext("2d");
+      const dpr = window.devicePixelRatio || 1;
+      const cssW = canvas.clientWidth;
+      const cssH = canvas.clientHeight;
+      canvas.width = Math.floor(cssW * dpr);
+      canvas.height = Math.floor(cssH * dpr);
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, cssW, cssH);
+      const max = Math.max(1, ...downHistory, ...upHistory);
+      const plot = (data, color) => {
+        if (data.length < 2) return;
+        ctx.beginPath();
+        data.forEach((v, i) => {
+          const x = (i / (MAX_POINTS - 1)) * cssW;
+          const y = cssH - (v / max) * (cssH - 8) - 4;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      };
+      plot(downHistory, "#34d399");
+      plot(upHistory, "#a78bfa");
+    }
+
+    eel.expose(on_net_stats, "on_net_stats");
+    function on_net_stats(stats) {
+      document.getElementById("statIp").textContent = stats.local_ip || "—";
+      document.getElementById("statHost").textContent = stats.hostname || "—";
+      document.getElementById("statGw").textContent = stats.gateway || "—";
+      document.getElementById("statCidr").textContent = stats.cidr || "—";
+      document.getElementById("statDown").textContent = fmtRate(stats.down_bps || 0);
+      document.getElementById("statUp").textContent = fmtRate(stats.up_bps || 0);
+      document.getElementById("statIface").textContent = stats.iface || "—";
+      document.getElementById("deviceCount").textContent = String(stats.device_count ?? devices.length);
+      if (stats.last_scan) document.getElementById("lastScan").textContent = stats.last_scan;
+      if (stats.oui) paintOui(stats.oui);
+      downHistory.push(stats.down_bps || 0);
+      upHistory.push(stats.up_bps || 0);
+      if (downHistory.length > MAX_POINTS) downHistory.shift();
+      if (upHistory.length > MAX_POINTS) upHistory.shift();
+      drawSpark();
+    }
+
+    eel.expose(on_scan_progress, "on_scan_progress");
+    function on_scan_progress(done, total) {
+      const pct = total ? Math.round((done / total) * 100) : 0;
+      document.getElementById("progressBar").style.width = pct + "%";
+      document.getElementById("progressText").textContent = `${done} / ${total} hosts`;
+    }
+
+    eel.expose(on_scan_complete, "on_scan_complete");
+    function on_scan_complete(list, meta) {
+      renderDevices(list);
+      document.getElementById("deviceCount").textContent = String(meta.count ?? list.length);
+      document.getElementById("lastScan").textContent = meta.last_scan || "—";
+      document.getElementById("scanMethod").textContent = meta.method ? `Method: ${meta.method}` : "";
+      if (meta.oui) paintOui(meta.oui);
+      if (meta.topology) paintTopo(meta.topology);
+      document.getElementById("progressBar").style.width = "100%";
+    }
+
+    eel.expose(on_scan_error, "on_scan_error");
+    function on_scan_error(msg) {
+      document.getElementById("scanStatus").textContent = "Scan error: " + msg;
+    }
+
+    eel.expose(on_scan_state, "on_scan_state");
+    function on_scan_state(on) {
+      setScanning(!!on);
+    }
+
+    function paintOui(oui) {
+      if (!oui) return;
+      const status = document.getElementById("ouiStatus");
+      const meta = document.getElementById("ouiMeta");
+      if (oui.refreshing) {
+        status.textContent = "Refreshing public OUI feeds…";
+      } else if (oui.ready) {
+        status.textContent = `${(oui.entries || 0).toLocaleString()} assignments from ${oui.source}`;
+      } else {
+        status.textContent = oui.error || "Using bundled OUI prefixes until public feeds load.";
+      }
+      const feeds = (oui.feeds || []).filter((f) => f.ok).map((f) => f.name).join(", ");
+      meta.textContent = [
+        oui.updated_label ? `Cached ${oui.updated_label}` : null,
+        feeds || null,
+        oui.error || null,
+      ].filter(Boolean).join(" · ");
+    }
+
+    eel.expose(on_oui_status, "on_oui_status");
+    function on_oui_status(oui) {
+      paintOui(oui);
+    }
+
+    eel.expose(on_oui_progress, "on_oui_progress");
+    function on_oui_progress(msg) {
+      document.getElementById("ouiStatus").textContent = msg;
+    }
+
+    eel.expose(on_port_scan_state, "on_port_scan_state");
+    function on_port_scan_state(on) {
+      setPortScanning(!!on);
+      if (on) document.getElementById("portProgressText").textContent = "Starting TCP connect scan…";
+    }
+
+    eel.expose(on_port_progress, "on_port_progress");
+    function on_port_progress(done, total, ip) {
+      const pct = total ? Math.round((done / total) * 100) : 0;
+      document.getElementById("portProgressBar").style.width = pct + "%";
+      document.getElementById("portProgressText").textContent = ip
+        ? `${done} / ${total} probes · ${ip}`
+        : `${done} / ${total} probes`;
+    }
+
+    eel.expose(on_host_ports, "on_host_ports");
+    function on_host_ports(ip, opened, state) {
+      devices = devices.map((d) => d.ip === ip ? { ...d, open_ports: opened, port_scan_state: state } : d);
+      renderDevices(devices);
+    }
+
+    eel.expose(on_port_host_done, "on_port_host_done");
+    function on_port_host_done(ip, index, total) {
+      document.getElementById("portProgressText").textContent = `Host ${index} / ${total} · ${ip}`;
+    }
+
+    eel.expose(on_port_scan_complete, "on_port_scan_complete");
+    function on_port_scan_complete(list) {
+      renderDevices(list);
+      document.getElementById("portProgressBar").style.width = "100%";
+      document.getElementById("portProgressText").textContent = "Port scan complete";
+    }
+
+    eel.expose(on_port_error, "on_port_error");
+    function on_port_error(msg) {
+      document.getElementById("portProgressText").textContent = "Port scan: " + msg;
+    }
+
+    document.getElementById("scanBtn").addEventListener("click", async () => {
+      await eel.start_scan()();
+    });
+    document.getElementById("portScanBtn").addEventListener("click", async () => {
+      const profile = document.getElementById("portProfile").value;
+      await eel.start_port_scan(null, profile)();
+    });
+    document.getElementById("filter").addEventListener("input", () => renderDevices(devices));
+    document.getElementById("ouiBtn").addEventListener("click", async () => {
+      document.getElementById("ouiStatus").textContent = "Refreshing public OUI feeds…";
+      await eel.refresh_oui_database()();
+    });
+    document.getElementById("autoScan").addEventListener("change", (e) => {
+      if (autoTimer) clearInterval(autoTimer);
+      autoTimer = null;
+      if (e.target.checked) {
+        eel.start_scan()();
+        autoTimer = setInterval(() => eel.start_scan()(), 60000);
+      }
+    });
+    window.addEventListener("resize", drawSpark);
+
+    function showTab(name) {
+      document.querySelectorAll(".tab-btn").forEach((b) => {
+        const on = b.getAttribute("data-tab") === name;
+        b.classList.toggle("bg-sky-500", on);
+        b.classList.toggle("text-slate-950", on);
+        b.classList.toggle("bg-slate-800", !on);
+        b.classList.toggle("text-slate-300", !on);
+      });
+      document.querySelectorAll(".overview-only").forEach((el) => el.classList.toggle("hidden", name !== "overview"));
+      document.querySelectorAll(".tab-panel").forEach((el) => el.classList.toggle("hidden", el.id !== "panel-" + name));
+    }
+    document.querySelectorAll(".tab-btn").forEach((b) => b.addEventListener("click", () => showTab(b.getAttribute("data-tab"))));
+
+    function pretty(obj) {
+      return JSON.stringify(obj, null, 2);
+    }
+    function paintAlerts(list) {
+      const ul = document.getElementById("alertList");
+      if (!ul) return;
+      ul.innerHTML = (list || []).map((a) => `<li class="flex items-start justify-between gap-2 rounded-xl border border-white/5 bg-slate-950/40 px-3 py-2">
+        <span><span class="text-xs uppercase text-slate-500">${a.kind}</span><br>${a.title}<br><span class="text-slate-500">${a.detail || ""}</span></span>
+        ${a.acked ? "" : `<button type="button" data-ack="${a.id}" class="text-xs text-sky-300">Ack</button>`}
+      </li>`).join("") || "<li class='text-slate-500'>No alerts</li>";
+      ul.querySelectorAll("[data-ack]").forEach((b) => b.addEventListener("click", async () => {
+        const r = await eel.ack_alert(Number(b.getAttribute("data-ack")))();
+        paintAlerts(r.alerts);
+      }));
+    }
+    function paintOutages(list) {
+      document.getElementById("outageList").innerHTML = (list || []).map((o) => {
+        const s = new Date(o.started * 1000).toLocaleString();
+        const e = o.ended ? new Date(o.ended * 1000).toLocaleString() : "ongoing";
+        return `<li>${s} → ${e} · ${o.target} · ${o.detail || ""}</li>`;
+      }).join("") || "<li>None</li>";
+    }
+    function paintWifi(w) {
+      document.getElementById("wifiNote").textContent = w.unknown_bssid_on_ssid
+        ? "Associated BSSID is not in the current neighbor list (possible roaming / hidden)."
+        : (w.connected ? `Associated ${w.connected.ssid || ""} ${w.connected.bssid || ""}` : "");
+      const occ = w.occupancy || {};
+      document.getElementById("wifiOcc").innerHTML = Object.keys(occ).sort((a,b)=>Number(a)-Number(b)).map((ch) => {
+        const n = occ[ch];
+        return `<div class="rounded-lg bg-slate-900 p-2 text-center"><div class="text-xs text-slate-500">ch ${ch}</div><div class="h-12 bg-sky-500/30" style="height:${8+n*10}px"></div><div class="font-mono text-xs">${n}</div></div>`;
+      }).join("");
+      const rows = [];
+      (w.networks || []).forEach((net) => {
+        (net.bssids || []).forEach((b) => {
+          rows.push(`<tr class="border-t border-white/5 ${b.associated ? 'bg-sky-500/10' : ''}">
+            <td class="px-3 py-2">${net.ssid || "(hidden)"} ${b.same_ssid_other_bssid ? '<span class="text-amber-300">same-SSID</span>' : ""}</td>
+            <td class="px-3 py-2 font-mono">${b.bssid}</td>
+            <td class="px-3 py-2">${b.channel}</td>
+            <td class="px-3 py-2">${b.signal}</td>
+            <td class="px-3 py-2">${net.auth} ${net.encryption}</td>
+          </tr>`);
+        });
+      });
+      document.getElementById("wifiBody").innerHTML = rows.join("") || "<tr><td class='px-3 py-4 text-slate-500' colspan='5'>No scan yet</td></tr>";
+    }
+    function paintLocal(l) {
+      document.getElementById("nicBox").textContent = pretty(l.nics || []);
+      document.getElementById("listenBox").textContent = pretty(l.listening || []);
+      document.getElementById("procBox").textContent = pretty(l.top_processes || []);
+    }
+    function paintTopo(t) {
+      if (!t) return;
+      document.getElementById("topoNote").textContent = t.honest || "";
+      document.getElementById("topoBox").innerHTML = (t.nodes || []).map((n) =>
+        `<span class="rounded-full px-3 py-1 text-xs ring-1 ring-white/10 ${n.kind==='cloud'?'bg-violet-500/20':n.kind==='gateway'?'bg-sky-500/20':'bg-slate-800'}">${n.label}</span>`
+      ).join(" → ");
+    }
+
+    eel.expose(on_extra, "on_extra");
+    function on_extra(kind, payload) {
+      if (kind === "ping") document.getElementById("pingBox").textContent = pretty(payload);
+      if (kind === "nat") document.getElementById("natBox").textContent = pretty(payload);
+      if (kind === "ipv6") document.getElementById("natBox").textContent += "\n\nIPv6\n" + pretty(payload);
+      if (kind === "dns") document.getElementById("dnsBox").textContent = pretty(payload);
+      if (kind === "traceroute") document.getElementById("traceBox").textContent = (payload.hops || []).join("\n");
+      if (kind === "speed") document.getElementById("speedBox").textContent = pretty(payload);
+      if (kind === "wifi") paintWifi(payload);
+      if (kind === "local") paintLocal(payload);
+      if (kind === "dhcp") document.getElementById("discBox").textContent = pretty(payload);
+      if (kind === "upnp_maps") document.getElementById("upnpBox").textContent = pretty(payload);
+      if (kind === "snmp") document.getElementById("snmpBox").textContent = pretty(payload);
+    }
+
+    document.getElementById("btnNat").addEventListener("click", () => eel.run_nat_check()());
+    document.getElementById("btnDns").addEventListener("click", () => eel.run_dns_check()());
+    document.getElementById("btnTrace").addEventListener("click", () => eel.run_traceroute("1.1.1.1")());
+    document.getElementById("btnSpeed").addEventListener("click", () => eel.run_speed_test()());
+    document.getElementById("btnWifi").addEventListener("click", () => eel.run_wifi_scan()());
+    document.getElementById("btnLocal").addEventListener("click", () => eel.run_local_report()());
+    document.getElementById("btnDhcp").addEventListener("click", () => eel.run_dhcp_probe()());
+    document.getElementById("btnUpnp").addEventListener("click", () => eel.run_upnp_maps()());
+    document.getElementById("btnSnmp").addEventListener("click", () => eel.run_snmp()());
+    document.getElementById("btnSched").addEventListener("click", () => eel.set_schedule(Number(document.getElementById("schedMin").value || 0))());
+    document.getElementById("btnHook").addEventListener("click", () => eel.set_webhook(document.getElementById("hookUrl").value)());
+    document.getElementById("btnExport").addEventListener("click", async () => {
+      const data = await eel.export_inventory()();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "netpulse-export.json";
+      a.click();
+    });
+
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+
+    (async () => {
+      const snap = await eel.get_snapshot()();
+      if (snap.stats) on_net_stats({ ...snap.stats, device_count: snap.devices?.length || 0, last_scan: snap.scan?.last_scan });
+      if (snap.devices) renderDevices(snap.devices);
+      if (snap.oui) paintOui(snap.oui);
+      setScanning(!!snap.scanning);
+      setPortScanning(!!snap.port_scanning);
+      paintAlerts(snap.alerts);
+      paintOutages(snap.outages);
+      if (snap.extra) {
+        if (snap.extra.ping) document.getElementById("pingBox").textContent = pretty(snap.extra.ping);
+        if (snap.extra.wifi) paintWifi(snap.extra.wifi);
+        if (snap.extra.local) paintLocal(snap.extra.local);
+        if (snap.extra.topology) paintTopo(snap.extra.topology);
+        document.getElementById("discBox").textContent = pretty({ mdns: snap.extra.mdns, ssdp: snap.extra.ssdp, dhcp: snap.extra.dhcp, dhcp_fp: snap.extra.dhcp_fp });
+        document.getElementById("speedHist").innerHTML = (snap.speed_history || []).map((s) => `<li>${new Date(s.ts*1000).toLocaleString()} · ${s.down_mbps} Mb/s · bloat ${s.bufferbloat}</li>`).join("");
+      }
+      eel.start_scan()();
+    })();
+  </script>
+</body>
+</html>

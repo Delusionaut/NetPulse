@@ -1,0 +1,68 @@
+{
+  "name": "netpulse",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NetPulse LAN analyzer desktop shell",
+  "author": "NetPulse",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "start": "electron .",
+    "stage-engine": "node scripts/stage-engine.cjs",
+    "dist": "npm run build && npm run stage-engine && electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "local.netpulse.desktop",
+    "productName": "NetPulse",
+    "asar": false,
+    "directories": {
+      "output": "../installer"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "engine-stage",
+        "to": "engine"
+      },
+      {
+        "from": "../assets",
+        "to": "assets"
+      }
+    ],
+    "win": {
+      "icon": "../assets/NetPulse.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "../assets/NetPulse.ico",
+      "uninstallerIcon": "../assets/NetPulse.ico",
+      "shortcutName": "NetPulse",
+      "artifactName": "NetPulse-Setup-${version}.exe"
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.5.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0"
+  }
+}
